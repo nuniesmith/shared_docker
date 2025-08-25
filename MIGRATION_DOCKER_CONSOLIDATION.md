@@ -46,6 +46,24 @@ docker run --rm -p 8000:8000 fks_api:dev curl -sf http://localhost:8000/health |
 
 5. If OK: remove `Dockerfile.legacy` and commit.
 
+### Source Layout Auto-Detection
+
+The shared Dockerfile now automatically handles both source layouts:
+
+- Nested layout: `src/python/...`
+- Flat layout: `src/...` (no inner `python/` directory)
+
+During build it will:
+
+1. Stage full `./src` tree.
+2. If `./src/python` exists (and default `PYTHON_SRC_DIR` not overridden) copy that into `/app/src/python`.
+3. Else, it copies the top-level files/dirs (excluding other language dirs like `rust`, `web`, `node`, `ninja`) into `/app/src/python`.
+
+
+Override remains possible with `--arg PYTHON_SRC_DIR=./src/custom_dir`.
+
+No per-service change is needed to benefit from this fallback.
+
 ## Build Helper Usage
 
 `build-service.sh` centralizes arguments:

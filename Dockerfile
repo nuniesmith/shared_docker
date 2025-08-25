@@ -85,9 +85,23 @@ ARG USE_SYSTEM_PACKAGES=true
 
 WORKDIR /app/src
 
-# Copy all requirements files for selection
-COPY ./src/python/requirements*.txt /app/
-COPY ./pyproject.toml* /app/
+# Copy requirements files (supports nested src/python or flat src) and optional pyproject
+COPY ./src /tmp/src_all
+RUN set -e \
+     && if [ -d /tmp/src_all/python ]; then \
+             echo "Detected nested python layout for requirements."; \
+             cp /tmp/src_all/python/requirements*.txt /app/ 2>/dev/null || true; \
+         else \
+             echo "Detected flat src layout for requirements."; \
+             cp /tmp/src_all/requirements*.txt /app/ 2>/dev/null || true; \
+         fi \
+     && if ! ls /app/requirements*.txt 1>/dev/null 2>&1; then \
+             echo "No requirements files found; creating placeholder requirements.txt"; \
+             echo "# empty requirements" > /app/requirements.txt; \
+         fi \
+     && echo "✓ Requirements files staged:" \
+     && ls -1 /app/requirements*.txt \
+     && cp -a ./pyproject.toml* /app/ 2>/dev/null || true
 
 # Show available requirements files for debugging
 RUN set -e \
@@ -343,8 +357,36 @@ RUN if [ ! -f /app/pyproject.toml ]; then \
         && echo "Default pyproject.toml created."; \
     fi
 
-# Copy Python source code (for Python services)
-COPY ${PYTHON_SRC_DIR}/ /app/src/python/
+# Copy Python source code (for Python services) with layout fallback
+# Preferred layout: ${PYTHON_SRC_DIR} (default ./src/python)
+# Fallback layout: ./src (flat) when no nested python dir exists
+# Strategy: copy entire ./src to a temp location, then normalize into /app/src/python
+COPY ./src /app/_src_raw
+RUN set -e \
+        && if [ -d /app/_src_raw/python ] && [ "${PYTHON_SRC_DIR}" = "./src/python" ]; then \
+                 echo "Detected nested python layout (src/python). Using that."; \
+                 mkdir -p /app/src/python \
+                 && cp -a /app/_src_raw/python/. /app/src/python/; \
+             elif [ -d "/app/_src_raw" ] && [ -n "${PYTHON_SRC_DIR}" ] && [ -d "/app/_src_raw/$(echo ${PYTHON_SRC_DIR} | sed 's#^./src/##')" ]; then \
+                 # Custom PYTHON_SRC_DIR override provided and exists within src
+                 echo "Detected custom PYTHON_SRC_DIR=${PYTHON_SRC_DIR}. Normalizing."; \
+                 mkdir -p /app/src/python \
+                 && cp -a /app/_src_raw/$(echo ${PYTHON_SRC_DIR} | sed 's#^./src/##')/. /app/src/python/; \
+             else \
+                 echo "No nested python directory found; falling back to flat src layout."; \
+                 mkdir -p /app/src/python \
+                 && find /app/_src_raw -maxdepth 1 -mindepth 1 \( -name 'python' -o -name 'rust' -o -name 'web' -o -name 'node' -o -name 'ninja' \) -prune -o -exec cp -a {} /app/src/python/ \; ; \
+             fi \
+        && echo "✓ Python source copied (with layout normalization)" \
+          && rm -rf /app/_src_raw \
+          && echo "Creating top-level symlinks for python packages" \
+          && mkdir -p /app/src \
+          && find /app/src/python -maxdepth 1 -mindepth 1 -type d -printf '%f\n' | while read pkg; do \
+                  case "$pkg" in __pycache__|tests|test|venv) continue ;; esac; \
+                  if [ ! -e "/app/src/$pkg" ]; then ln -s "/app/src/python/$pkg" "/app/src/$pkg"; fi; \
+              done \
+          && echo "Symlinks created:" \
+          && ls -l /app/src | sed -n '1,40p'
 
 # Create source directory structure and set permissions
 RUN set -e \
@@ -917,7 +959,7 @@ RUN set -e \
     && echo "✓ Service directories created"
 
 # Set environment variables
-ENV PYTHONPATH=/app/src:/app \
+ENV PYTHONPATH=/app/src:/app/src/python:/app \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/opt/venv/bin:/app/bin:/app/bin/network:/app/bin/execution:/app/bin/connector:/app/bin/dotnet:/app/bin/node:$PATH" \
@@ -1029,6 +1071,10 @@ RUN set -e \
             printf '%s\n' '#!/usr/bin/env bash' \ 
                 'set -euo pipefail' \ 
                 'PY_RUNTIME=${SERVICE_RUNTIME:-python}' \ 
+                'if [ -n "${RUNTIME_CMD:-}" ]; then' \
+                '  echo "[entrypoint] Running custom RUNTIME_CMD" >&2' \
+                '  exec bash -c "$RUNTIME_CMD"' \
+                'fi' \
                 'PORT=${SERVICE_PORT:-8000}' \ 
                 'MODULE="${PYTHON_MODULE:-}"' \ 
                 'if [ -z "$MODULE" ] && [ "$PY_RUNTIME" = "python" ]; then' \ 
