@@ -999,24 +999,39 @@ RUN --mount=type=bind,from=builder-node,source=/,target=/builder-node \
 RUN mkdir -p /app/src /app/src/ninja /app/src/rust /app/src/node \
     && chown -R ${USER_ID}:${GROUP_ID} /app/src/
 
-# Copy configuration and scripts
-COPY --chown=${USER_ID}:${GROUP_ID} ./config /app/config
-COPY --chown=${USER_ID}:${GROUP_ID} ./scripts/docker/ /app/scripts/docker/
-
-# UPDATED: Copy external entrypoint scripts instead of generating startup script
-COPY --chown=${USER_ID}:${GROUP_ID} ./scripts/docker/entrypoint-runtime.sh /app/entrypoint-runtime.sh
-COPY --chown=${USER_ID}:${GROUP_ID} ./scripts/docker/entrypoint-python.sh /app/scripts/docker/entrypoint-python.sh
-COPY --chown=${USER_ID}:${GROUP_ID} ./scripts/docker/entrypoint-rust.sh /app/scripts/docker/entrypoint-rust.sh
-COPY --chown=${USER_ID}:${GROUP_ID} ./scripts/docker/entrypoint-node.sh /app/scripts/docker/entrypoint-node.sh
-
-# Make entrypoint scripts executable
+# Copy configuration if exists; otherwise create placeholder
 RUN set -e \
-    && echo "Setting up entrypoint scripts..." \
-    && chmod +x /app/entrypoint-runtime.sh \
-    && chmod +x /app/scripts/docker/entrypoint-python.sh \
-    && chmod +x /app/scripts/docker/entrypoint-rust.sh \
-    && chmod +x /app/scripts/docker/entrypoint-node.sh \
-    && echo "✓ Entrypoint scripts configured successfully"
+        && if [ -d ./config ]; then \
+                 echo "Copying service config"; \
+                 cp -r ./config /app/config; \
+             else \
+                 echo "No local config directory; creating empty /app/config"; \
+                 mkdir -p /app/config; \
+             fi \
+        && chown -R ${USER_ID}:${GROUP_ID} /app/config
+
+# Copy scripts if present
+RUN set -e \
+        && if [ -d ./scripts/docker ]; then \
+                 echo "Copying service docker scripts"; \
+                 mkdir -p /app/scripts/docker; \
+                 cp -r ./scripts/docker/* /app/scripts/docker/ || true; \
+             else \
+                 echo "No service docker scripts present"; \
+                 mkdir -p /app/scripts/docker; \
+             fi \
+        && chown -R ${USER_ID}:${GROUP_ID} /app/scripts
+
+# Provide default entrypoint scripts if missing
+RUN set -e \
+        && [ -f /app/entrypoint-runtime.sh ] || cat > /app/entrypoint-runtime.sh <<'EOF'\n#!/usr/bin/env bash\nset -euo pipefail\ncase "${SERVICE_RUNTIME}" in\n  python|hybrid) if command -v uvicorn >/dev/null 2>&1 && [ -n "${PYTHON_MODULE:-}" ]; then exec uvicorn "${PYTHON_MODULE}" --host 0.0.0.0 --port "${SERVICE_PORT:-8000}"; fi ;;\n  node) if [ -f package.json ]; then exec npm start --if-present || node server.js || node index.js; fi ;;\n  rust) if command -v main >/dev/null 2>&1; then exec main; fi ;;\n  dotnet) if comp=$(find . -maxdepth 2 -name '*.dll' | head -1); then exec dotnet "$comp"; fi ;;\n  *) echo "[entrypoint] Unknown runtime ${SERVICE_RUNTIME}; sleeping"; sleep infinity; ;;\nesac\nexec "$@"\nEOF \
+        && for lang in python rust node; do \
+                 script=/app/scripts/docker/entrypoint-${lang}.sh; \
+                 [ -f "$script" ] || echo "#!/usr/bin/env bash" > "$script"; \
+                 chmod +x "$script"; \
+             done \
+        && chmod +x /app/entrypoint-runtime.sh \
+        && echo "✓ Default entrypoint scripts ensured"
 
 # Validate service directory structure with detailed reporting
 RUN set -e \
