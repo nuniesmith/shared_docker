@@ -1022,16 +1022,44 @@ RUN set -e \
              fi \
         && chown -R ${USER_ID}:${GROUP_ID} /app/scripts
 
-# Provide default entrypoint scripts if missing
-RUN set -e \
-        && [ -f /app/entrypoint-runtime.sh ] || cat > /app/entrypoint-runtime.sh <<'EOF'\n#!/usr/bin/env bash\nset -euo pipefail\ncase "${SERVICE_RUNTIME}" in\n  python|hybrid) if command -v uvicorn >/dev/null 2>&1 && [ -n "${PYTHON_MODULE:-}" ]; then exec uvicorn "${PYTHON_MODULE}" --host 0.0.0.0 --port "${SERVICE_PORT:-8000}"; fi ;;\n  node) if [ -f package.json ]; then exec npm start --if-present || node server.js || node index.js; fi ;;\n  rust) if command -v main >/dev/null 2>&1; then exec main; fi ;;\n  dotnet) if comp=$(find . -maxdepth 2 -name '*.dll' | head -1); then exec dotnet "$comp"; fi ;;\n  *) echo "[entrypoint] Unknown runtime ${SERVICE_RUNTIME}; sleeping"; sleep infinity; ;;\nesac\nexec "$@"\nEOF \
-        && for lang in python rust node; do \
-                 script=/app/scripts/docker/entrypoint-${lang}.sh; \
-                 [ -f "$script" ] || echo "#!/usr/bin/env bash" > "$script"; \
-                 chmod +x "$script"; \
-             done \
-        && chmod +x /app/entrypoint-runtime.sh \
-        && echo "✓ Default entrypoint scripts ensured"
+# Provide default entrypoint scripts if missing (single RUN for parser safety)
+RUN set -e \ 
+ && if [ ! -f /app/entrypoint-runtime.sh ]; then \ 
+            echo "Generating default /app/entrypoint-runtime.sh"; \ 
+            printf '%s\n' '#!/usr/bin/env bash' \ 
+                'set -euo pipefail' \ 
+                'PY_RUNTIME=${SERVICE_RUNTIME:-python}' \ 
+                'PORT=${SERVICE_PORT:-8000}' \ 
+                'MODULE="${PYTHON_MODULE:-}"' \ 
+                'if [ -z "$MODULE" ] && [ "$PY_RUNTIME" = "python" ]; then' \ 
+                '  CANDIDATE=$(grep -R "FastAPI" -l src 2>/dev/null | head -1 | sed '"'"'s#^src/##; s#/__init__\\.py$##; s#/#.#g; s#\\.py$##'"'"')' \ 
+                '  [ -n "$CANDIDATE" ] && MODULE="$CANDIDATE:app"' \ 
+                'fi' \ 
+                'case "$PY_RUNTIME" in' \ 
+                '  python|hybrid)' \ 
+                '    if command -v uvicorn >/dev/null 2>&1 && [ -n "$MODULE" ]; then' \ 
+                '      echo "[entrypoint] Starting uvicorn $MODULE on $PORT" >&2' \ 
+                '      exec uvicorn "$MODULE" --host 0.0.0.0 --port "$PORT"' \ 
+                '    fi ;;' \ 
+                '  node)' \ 
+                '    if [ -f package.json ]; then (npm run start || node server.js || node index.js) && exit 0; fi ;;' \ 
+                '  rust)' \ 
+                '    if command -v main >/dev/null 2>&1; then exec main; fi ;;' \ 
+                '  dotnet)' \ 
+                '    comp=$(find . -maxdepth 2 -name "*.dll" | head -1); if [ -n "$comp" ]; then exec dotnet "$comp"; fi ;;' \ 
+                '  *) echo "[entrypoint] Unknown runtime $PY_RUNTIME; sleep infinity" >&2; sleep infinity ;;' \ 
+                'esac' \ 
+                'echo "[entrypoint] No runnable target detected; sleeping" >&2' \ 
+                'sleep infinity' \ 
+                > /app/entrypoint-runtime.sh; \ 
+        fi \ 
+ && for lang in python rust node; do \ 
+            script=/app/scripts/docker/entrypoint-${lang}.sh; \ 
+            if [ ! -f "$script" ]; then echo '#!/usr/bin/env bash' > "$script"; fi; \ 
+            chmod +x "$script"; \ 
+        done \ 
+ && chmod +x /app/entrypoint-runtime.sh \ 
+ && echo "✓ Default entrypoint scripts ensured"
 
 # Validate service directory structure with detailed reporting
 RUN set -e \
