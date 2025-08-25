@@ -1,0 +1,257 @@
+services:
+  fks_api:
+    build:
+      context: ../fks_api
+      dockerfile: ../../shared/shared_docker/Dockerfile
+      args:
+        SERVICE_RUNTIME: python
+        SERVICE_TYPE: api
+    env_file:
+      - ../fks_api/.env
+    volumes:
+      - ../fks_api:/app/service:ro
+    depends_on:
+      - fks_config
+    networks: [fks_net]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:4000/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  fks_auth:
+    build:
+      context: ../fks_auth
+      dockerfile: ../../shared/shared_docker/Dockerfile
+      args:
+        SERVICE_RUNTIME: python
+        SERVICE_TYPE: api
+    networks: [fks_net]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:4100/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  fks_config:
+    build:
+      context: ../fks_config
+      dockerfile: ../../shared/shared_docker/Dockerfile
+      args:
+        SERVICE_RUNTIME: rust
+        SERVICE_TYPE: config
+    networks: [fks_net]
+    healthcheck:
+      test: ["CMD-SHELL", "[ -f /app/service/CONFIG_READY ] || exit 1"]
+      interval: 60s
+      timeout: 5s
+      retries: 2
+      start_period: 15s
+
+  fks_data:
+    build:
+      context: ../fks_data
+      dockerfile: ../../shared/shared_docker/Dockerfile
+      args:
+        SERVICE_RUNTIME: python
+        SERVICE_TYPE: data
+    networks: [fks_net]
+    volumes:
+      - data_volume:/var/lib/fks/data
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import sqlite3,os; sqlite3.connect(\"/var/lib/fks/data/active_assets.db\").close(); print(1)' || exit 1"]
+      interval: 60s
+      timeout: 8s
+      retries: 2
+      start_period: 25s
+
+  fks_engine:
+    build:
+      context: ../fks_engine
+      dockerfile: ../../shared/shared_docker/Dockerfile
+      args:
+        SERVICE_RUNTIME: python
+        SERVICE_TYPE: engine
+    networks: [fks_net]
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import sys; sys.exit(0)'"]
+      interval: 45s
+      timeout: 5s
+      retries: 2
+      start_period: 30s
+
+  fks_master:
+    build:
+      context: ../fks_master
+      dockerfile: ../../shared/shared_docker/Dockerfile
+      args:
+        SERVICE_RUNTIME: python
+        SERVICE_TYPE: master
+    depends_on:
+      - fks_api
+      - fks_auth
+      - fks_config
+      - fks_data
+      - fks_engine
+    networks: [fks_net]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:4500/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+  fks_web:
+    build:
+      context: ../fks_web
+      dockerfile: ../../shared/shared_docker/Dockerfile
+      args:
+        SERVICE_RUNTIME: node
+        SERVICE_TYPE: web
+    working_dir: /app/service
+    volumes:
+      - ../fks_web:/app/service:ro
+    depends_on:
+      - fks_api
+    networks: [fks_net]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:5173/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  fks_worker:
+    build:
+      context: ../fks_worker
+      dockerfile: ../../shared/shared_docker/Dockerfile
+      args:
+        SERVICE_RUNTIME: python
+        SERVICE_TYPE: worker
+    networks: [fks_net]
+    depends_on:
+      - fks_config
+    healthcheck:
+      test: ["CMD-SHELL", "ps aux | grep -v grep | grep worker || exit 1"]
+      interval: 60s
+      timeout: 5s
+      retries: 2
+      start_period: 20s
+
+  fks_ninja:
+    build:
+      context: ../fks_ninja
+      dockerfile: ../../shared/shared_docker/Dockerfile
+      args:
+        SERVICE_RUNTIME: dotnet
+        SERVICE_TYPE: ninja
+    networks: [fks_net]
+    healthcheck:
+      test: ["CMD-SHELL", "dotnet --info >/dev/null 2>&1 || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  fks_execution:
+    build:
+      context: ../fks_execution
+      dockerfile: ../../shared/shared_docker/Dockerfile
+      args:
+        SERVICE_RUNTIME: python
+        SERVICE_TYPE: execution
+    networks: [fks_net]
+    depends_on:
+      - fks_engine
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'print(1)' || exit 1"]
+      interval: 45s
+      timeout: 5s
+      retries: 2
+      start_period: 30s
+
+  fks_training:
+    build:
+      context: ../fks_training
+      dockerfile: ../../shared/shared_docker/Dockerfile
+      args:
+        SERVICE_RUNTIME: python
+        SERVICE_TYPE: training
+        BUILD_TYPE: gpu
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+    networks: [fks_net]
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import torch; print(torch.cuda.is_available())' || exit 1"]
+      interval: 120s
+      timeout: 20s
+      retries: 2
+      start_period: 90s
+
+  fks_transformer:
+    build:
+      context: ../fks_transformer
+      dockerfile: ../../shared/shared_docker/Dockerfile
+      args:
+        SERVICE_RUNTIME: python
+        SERVICE_TYPE: transformer
+        BUILD_TYPE: gpu
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+    networks: [fks_net]
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import torch; print(1)' || exit 1"]
+      interval: 120s
+      timeout: 20s
+      retries: 2
+      start_period: 90s
+
+  fks_node_network:
+    build:
+      context: ../fks_node_network
+      dockerfile: ../../shared/shared_docker/Dockerfile
+      args:
+        SERVICE_RUNTIME: rust
+        SERVICE_TYPE: node-network
+    networks: [fks_net]
+    healthcheck:
+      test: ["CMD-SHELL", "echo ok"]
+      interval: 60s
+      timeout: 5s
+      retries: 2
+      start_period: 30s
+
+  fks_nginx:
+    build:
+      context: ../fks_nginx
+      dockerfile: ../../shared/shared_docker/Dockerfile
+      args:
+        SERVICE_RUNTIME: nginx
+        SERVICE_TYPE: proxy
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - fks_web
+      - fks_api
+    networks: [fks_net]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+networks:
+  fks_net:
+    driver: bridge
+volumes:
+  data_volume:

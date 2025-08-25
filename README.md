@@ -11,21 +11,21 @@ The unified compose definitions from `fks/compose` were migrated here under `com
 Usage example from repository root:
 
 ```bash
-docker compose -f shared/shared-docker/compose/docker-compose.yml up -d
+docker compose -f shared/shared_docker/compose/docker-compose.yml up -d
 ```
 
 Dev overrides:
 
 ```bash
-docker compose -f shared/shared-docker/compose/docker-compose.yml \
-			   -f shared/shared-docker/compose/docker-compose.dev.yml up -d
+docker compose -f shared/shared_docker/compose/docker-compose.yml \
+			   -f shared/shared_docker/compose/docker-compose.dev.yml up -d
 ```
 
 Prod overrides:
 
 ```bash
-docker compose -f shared/shared-docker/compose/docker-compose.yml \
-			   -f shared/shared-docker/compose/docker-compose.prod.yml up -d
+docker compose -f shared/shared_docker/compose/docker-compose.yml \
+			   -f shared/shared_docker/compose/docker-compose.prod.yml up -d
 ```
 
 Ensure relative build contexts still resolve (they reference `../../fks/...`). If this repository is used standalone, replace those paths or publish built images and switch to `image:` references only.
