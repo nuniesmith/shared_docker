@@ -1,4 +1,4 @@
-# shared-docker
+# shared_docker
 
 Service-agnostic shared component extracted from monolith paths:
 

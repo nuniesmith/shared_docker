@@ -38,4 +38,4 @@ services:
 
 networks:
   default:
-    name: shared-template-net
+    name: shared_template-net

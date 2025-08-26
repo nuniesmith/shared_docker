@@ -20,7 +20,7 @@ This guide describes how to migrate individual service Dockerfiles to the unifie
 2. Thin Wrapper: Minimal Dockerfile containing only metadata or minor overrides:
 
 ```Dockerfile
-ARG BASE_TAG=shared-base:latest
+ARG BASE_TAG=shared_base:latest
 FROM ${BASE_TAG} AS runtime
 LABEL org.fks.wrapper="true" org.fks.service="fks_api"
 # (Optional) COPY overrides

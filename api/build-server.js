@@ -38,7 +38,7 @@ app.get('/api/services', (req, res) => {
             status: 'active'
         },
         {
-            id: 'fks-addon',
+            id: 'fks_addon',
             name: 'FKS Trading Addon',
             icon: '⚡',
             description: 'Custom FKS trading algorithms and strategies',
@@ -234,7 +234,7 @@ app.post('/api/package', async (req, res) => {
             try {
                 // Your PackageNT8 target creates structure in ../packages/temp
                 const tempPackageDir = '/workspace/packages/temp';
-                const zipPath = '/workspace/packages/fks-addon-final.zip';
+                const zipPath = '/workspace/packages/fks_addon-final.zip';
                 
                 if (!fs.existsSync(tempPackageDir)) {
                     return res.status(500).json({
@@ -338,7 +338,7 @@ app.get('/api/download/:filename', (req, res) => {
     // Try multiple possible locations
     const possiblePaths = [
         path.join('/workspace/packages', filename),
-        path.join('/workspace/packages', 'fks-addon-final.zip'),
+        path.join('/workspace/packages', 'fks_addon-final.zip'),
         path.join('/workspace/bin/Release', filename)
     ];
     
@@ -352,7 +352,7 @@ app.get('/api/download/:filename', (req, res) => {
     console.log(`Download request for: ${filename}, found at: ${filePath}`);
     
     if (filePath && fs.existsSync(filePath)) {
-        res.download(filePath, 'fks-trading-system.zip');
+        res.download(filePath, 'fks_trading-system.zip');
     } else {
         res.status(404).json({ 
             error: 'File not found',

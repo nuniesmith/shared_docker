@@ -1,5 +1,5 @@
 {
-    "name": "fks-build-api",
+    "name": "fks_build-api",
     "version": "1.0.0",
     "description": "FKS Build API for NinjaTrader addon packaging",
     "main": "build-server.js",
