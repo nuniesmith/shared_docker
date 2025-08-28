@@ -9,7 +9,7 @@ This guide describes how to migrate individual service Dockerfiles to the unifie
 | Python API/Data/Engine/Worker | fks_api, fks_data, fks_engine, fks_worker, fks_execution | Use shared build directly (compose build args) |
 | Python GPU | fks_training, fks_transformer | Use shared build with `BUILD_TYPE=gpu` |
 | Node/Web | fks_web, personal web clients | Use shared build with `SERVICE_RUNTIME=node` |
-| Rust Services | fks_config, fks_node_network | Use shared build with `SERVICE_RUNTIME=rust` (enhance shared Dockerfile if needed) |
+| Rust Services | fks_config, fks_nodes | Use shared build with `SERVICE_RUNTIME=rust` (enhance shared Dockerfile if needed) |
 | .NET / Mono | fks_ninja | Defer – evaluate converting to shared dotnet stage |
 | Infra (nginx, postgres, redis, syncthing) | fks_nginx (wrapper), postgres, redis, sync containers | Prefer vendor image (use `image:` not build) |
 | Custom game/server (heavy bespoke) | clonehero server, 2009scape, ats | Keep custom for now; consider parameterizing later |
