@@ -1,0 +1,36 @@
+# Dockerfile for FKS Trading Systems - .NET/C# Runtime
+
+ARG DOTNET_VERSION=9.0  # Updated to latest stable in 2025
+ARG BUILD_TYPE=cpu
+ARG SERVICE_PORT=8080  # Aligned with simplified
+
+# Build stage
+FROM mcr.microsoft.com/dotnet/sdk:${DOTNET_VERSION} AS build
+WORKDIR /src
+
+# Copy and restore for caching
+COPY *.sln ./
+COPY src ./src
+RUN dotnet restore src || true
+
+# Build
+RUN dotnet publish src -c Release -o /app/publish --no-restore
+
+# Runtime stage (use aspnet for minimal size)
+FROM mcr.microsoft.com/dotnet/aspnet:${DOTNET_VERSION} AS final
+WORKDIR /app
+COPY --from=build /app/publish .
+
+# Non-root user
+ARG USER_ID=1088
+RUN adduser --disabled-password --gecos '' --uid ${USER_ID} appuser
+USER appuser
+
+ENV ASPNETCORE_URLS=http://+:${SERVICE_PORT} \
+    DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
+
+EXPOSE ${SERVICE_PORT}
+ENTRYPOINT ["dotnet", "FKS.dll"]  # Adjust if project name differs
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:${SERVICE_PORT}/health || exit 1

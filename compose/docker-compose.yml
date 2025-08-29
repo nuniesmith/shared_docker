@@ -1,4 +1,3 @@
-version: '3.9'
 
 # Central orchestrator compose (migrated from fks/compose)
 services:

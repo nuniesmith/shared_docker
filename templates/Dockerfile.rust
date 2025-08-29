@@ -1,0 +1,45 @@
+# Dockerfile for FKS Trading Systems - Rust Runtime
+
+ARG RUST_VERSION=stable  # Use latest stable in 2025
+ARG BUILD_TYPE=cpu
+ARG SERVICE_PORT=8080
+
+# Build stage
+FROM rust:${RUST_VERSION}-slim AS build
+WORKDIR /src
+
+# Cache dependencies
+COPY Cargo.toml Cargo.lock* ./
+RUN mkdir src && echo "fn main() {}" > src/main.rs \
+    && cargo build --release \
+    && rm -rf src
+
+# Copy and build real source
+COPY src ./src
+COPY shared ./shared
+RUN cargo build --release --locked
+
+# Runtime stage
+FROM debian:bookworm-slim AS final
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tzdata \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy binary (infer if not specified)
+COPY --from=build /src/target/release/* /usr/local/bin/
+RUN APP_BIN=$(find /usr/local/bin -type f -executable -not -name "*.d" | head -1) \
+    && ln -s $APP_BIN /usr/local/bin/app
+
+# Non-root user
+ARG USER_ID=1088
+RUN adduser --disabled-password --gecos '' --uid ${USER_ID} appuser
+USER appuser
+
+ENV RUST_LOG=info
+
+EXPOSE ${SERVICE_PORT}
+ENTRYPOINT ["/usr/local/bin/app"]
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:${SERVICE_PORT}/health || exit 1

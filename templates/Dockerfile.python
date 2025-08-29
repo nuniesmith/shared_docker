@@ -1,0 +1,64 @@
+# Dockerfile for FKS Trading Systems - Python Runtime
+
+ARG PYTHON_VERSION=3.13  # Updated to latest in 2025
+ARG BUILD_TYPE=cpu
+ARG CUDA_VERSION=12.8.0  # Retained
+ARG SERVICE_PORT=8000
+
+# Builder stage (CPU/GPU)
+FROM python:${PYTHON_VERSION}-slim AS builder-cpu
+
+FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu24.04 AS builder-gpu
+ARG PYTHON_VERSION
+RUN apt-get update && apt-get install -y --no-install-recommends python${PYTHON_VERSION} python${PYTHON_VERSION}-venv python3-pip \
+    && ln -s /usr/bin/python${PYTHON_VERSION} /usr/bin/python \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+FROM builder-${BUILD_TYPE} AS build
+
+WORKDIR /app
+
+# System deps
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential libpq-dev curl git pkg-config libssl-dev \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Venv and deps
+RUN python -m venv /venv
+ENV PATH="/venv/bin:$PATH"
+COPY requirements*.txt pyproject.toml poetry.lock* ./
+RUN pip install --upgrade pip wheel && pip install -r requirements.txt
+
+# Copy source
+COPY src ./src
+
+# Runtime stage
+FROM python:${PYTHON_VERSION}-slim AS runtime-cpu
+
+FROM nvidia/cuda:${CUDA_VERSION}-runtime-ubuntu24.04 AS runtime-gpu
+RUN apt-get update && apt-get install -y --no-install-recommends python${PYTHON_VERSION} python3-pip libpq5 curl \
+    && ln -s /usr/bin/python${PYTHON_VERSION} /usr/bin/python \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+FROM runtime-${BUILD_TYPE} AS final
+WORKDIR /app
+
+COPY --from=build /venv /venv
+COPY --from=build /app/src ./src
+
+# Non-root user
+ARG USER_ID=1088
+RUN adduser --disabled-password --gecos '' --uid ${USER_ID} appuser
+USER appuser
+
+ENV PATH="/venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app/src
+
+EXPOSE ${SERVICE_PORT}
+
+ENTRYPOINT ["bash", "-c"]
+CMD ["uvicorn src.main:app --host 0.0.0.0 --port ${SERVICE_PORT}"]  # Assume FastAPI; override with ENV
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:${SERVICE_PORT}/health || exit 1
