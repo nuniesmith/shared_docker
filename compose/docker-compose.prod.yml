@@ -1,8 +1,7 @@
-version: '3.9'
 # Production overrides (migrated)
 services:
   fks_api:
-    image: ${DOCKER_REGISTRY:-fkstrading}/fks_api:${API_VERSION:-latest}
+    image: ${DOCKER_REGISTRY:-fks}/fks_api:${API_VERSION:-latest}
     environment:
       APP_ENV: production
       APP_LOG_LEVEL: WARNING
@@ -12,11 +11,11 @@ services:
           cpus: "${API_CPU_LIMIT:-2}"
           memory: ${API_MEMORY_LIMIT:-2048M}
   fks_api_worker:
-    image: ${DOCKER_REGISTRY:-fkstrading}/fks_api:${API_VERSION:-latest}
+    image: ${DOCKER_REGISTRY:-fks}/fks_api:${API_VERSION:-latest}
     environment:
       APP_ENV: production
   fks_api_scheduler:
-    image: ${DOCKER_REGISTRY:-fkstrading}/fks_api:${API_VERSION:-latest}
+    image: ${DOCKER_REGISTRY:-fks}/fks_api:${API_VERSION:-latest}
     environment:
       APP_ENV: production
   auth_server:

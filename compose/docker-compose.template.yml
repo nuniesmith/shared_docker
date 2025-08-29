@@ -1,4 +1,3 @@
-version: '3.9'
 # Central template for services using shared/shared_docker/Dockerfile
 # Usage:
 #   cp docker-compose.template.yml docker-compose.override.yml
