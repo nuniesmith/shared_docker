@@ -5,8 +5,14 @@ ARG BUILD_TYPE=cpu
 ARG SERVICE_PORT=8080
 
 # Build stage
-FROM rust:${RUST_VERSION}-slim AS build
+FROM rust:slim AS build
 WORKDIR /src
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 # Cache dependencies
 COPY Cargo.toml Cargo.lock* ./
@@ -23,13 +29,12 @@ RUN cargo build --release --locked
 FROM debian:bookworm-slim AS final
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tzdata \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tzdata curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy binary (infer if not specified)
-COPY --from=build /src/target/release/* /usr/local/bin/
-RUN APP_BIN=$(find /usr/local/bin -type f -executable -not -name "*.d" | head -1) \
-    && ln -s $APP_BIN /usr/local/bin/app
+COPY --from=build /src/target/release/fks_execution /usr/local/bin/fks_execution
+RUN ln -s /usr/local/bin/fks_execution /usr/local/bin/app
 
 # Non-root user
 ARG USER_ID=1088
