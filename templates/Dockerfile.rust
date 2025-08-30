@@ -1,6 +1,7 @@
 # Docker Template - Enhanced Rust Service
 # Template for FKS Rust microservices with standardized configuration
 
+############################################
 # Build stage
 FROM rust:1.82-slim AS build
 
@@ -8,6 +9,8 @@ FROM rust:1.82-slim AS build
 ARG SERVICE_NAME=fks-service
 ARG SERVICE_TYPE=engine  
 ARG SERVICE_PORT=8080
+# Optional comma-separated cargo features to enable
+ARG SERVICE_FEATURES=""
 
 # Environment variables for build stage
 ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse \
@@ -39,9 +42,15 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 COPY src/ ./src/
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/app/target \
-    cargo build --release && \
-    find target/release -maxdepth 1 -type f -executable -not -name "*.*" -exec cp {} /app/service \;
+        --mount=type=cache,target=/app/target \
+        bash -c 'set -e; \
+            if [ -n "$SERVICE_FEATURES" ]; then \
+                echo "Building with features: $SERVICE_FEATURES"; \
+                cargo build --release --features "$SERVICE_FEATURES"; \
+            else \
+                cargo build --release; \
+            fi; \
+            find target/release -maxdepth 1 -type f -executable -not -name "*.*" -exec cp {} /app/service \;'
 
 # Runtime stage - using Debian slim for compatibility
 FROM debian:bookworm-slim AS runtime
@@ -50,6 +59,7 @@ FROM debian:bookworm-slim AS runtime
 ARG SERVICE_NAME=fks-service
 ARG SERVICE_TYPE=engine
 ARG SERVICE_PORT=8080
+ARG SERVICE_FEATURES=""
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
