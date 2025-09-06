@@ -3,10 +3,10 @@ set -euo pipefail
 
 # Generates simplified Dockerfiles per service based on runtime mapping.
 # It WILL NOT overwrite an existing Dockerfile unless --force is provided.
-# Advanced unified build remains available at shared/shared_docker/Dockerfile.
+# Advanced unified build remains available at shared/docker/Dockerfile.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-TEMPLATE_DIR="$ROOT_DIR/shared/shared_docker/templates"
+TEMPLATE_DIR="$ROOT_DIR/shared/docker/templates"
 FORCE=0
 
 usage(){
@@ -66,7 +66,7 @@ This service supports two build strategies:
    docker build -f Dockerfile.simple -t ${svc}:simple .
 
 2. Unified (full multi-runtime + GPU support) shared file:
-   docker build -f ../../shared/shared_docker/Dockerfile -t ${svc}:unified \
+   docker build -f ../../shared/docker/Dockerfile -t ${svc}:unified \
      --build-arg SERVICE_RUNTIME=${runtime} .
 
 Default repository Dockerfile may still be the unified version; adopt the simple one by renaming if desired.
