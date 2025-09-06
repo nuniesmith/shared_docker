@@ -4,7 +4,7 @@
 #   Adjust contexts and SERVICE_TYPE/SERVICE_RUNTIME per service.
 
 x-default-build: &default-build
-  dockerfile: ../../shared/shared_docker/Dockerfile
+  dockerfile: ../../shared/docker/Dockerfile
   args:
     SERVICE_RUNTIME: python
     SERVICE_TYPE: app
@@ -28,7 +28,7 @@ services:
   sample_web:
     build:
       context: ../../../fks/fks_web
-      dockerfile: ../../shared/shared_docker/Dockerfile
+      dockerfile: ../../shared/docker/Dockerfile
       args:
         SERVICE_RUNTIME: node
         SERVICE_TYPE: web
