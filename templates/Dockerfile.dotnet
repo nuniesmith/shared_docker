@@ -21,8 +21,13 @@ WORKDIR /src
 
 # Copy solution and project files for dependency caching
 COPY *.sln global.json* nuget.config* ./
+# Support both nested project folders and single root csproj layout
+RUN mkdir -p src
+## Copy root-level csproj if present
+COPY src/*.csproj ./src/
+## Copy nested project csproj files (ignore missing by using wildcard that may not match)
 COPY src/*/*.csproj ./src/
-RUN find . -name "*.csproj" -exec dirname {} \; | xargs -I {} mkdir -p {}
+RUN echo "Discovered project files:" && ls -1 src || true
 
 # Restore NuGet packages
 RUN --mount=type=cache,target=/root/.nuget/packages \
@@ -32,12 +37,34 @@ RUN --mount=type=cache,target=/root/.nuget/packages \
 COPY src/ ./src/
 COPY shared/ ./shared/
 
-# Build and publish
+# Build and publish (detect actual csproj if PROJECT_NAME folder not present)
 RUN --mount=type=cache,target=/root/.nuget/packages \
-    dotnet publish src/${PROJECT_NAME} -c ${CONFIGURATION} -o /app/publish \
-    --no-restore --verbosity minimal \
-    --self-contained false \
-    /p:PublishReadyToRun=true
+    set -e; \
+    if [ -d "src/${PROJECT_NAME}" ]; then \
+        TARGET_PATH="src/${PROJECT_NAME}"; \
+    else \
+        TARGET_PATH="$(find src -maxdepth 1 -name '*.csproj' | head -n1)"; \
+    fi; \
+    echo "Selected project: ${TARGET_PATH}"; \
+    if grep -q "<TargetFramework>net4" "${TARGET_PATH}"; then \
+        echo "Detected .NET Framework target (likely net48). Skipping publish (not supported on Linux base image)."; \
+        mkdir -p /app/publish && cp "${TARGET_PATH}" /app/publish/; \
+    else \
+        echo "Publishing (managed core/modern .NET)"; \
+        dotnet publish "${TARGET_PATH}" -c ${CONFIGURATION} -o /app/publish \
+          --no-restore --verbosity minimal \
+          --self-contained false \
+          /p:PublishReadyToRun=true; \
+    fi
+
+# Optional packaging (if PackageNT8 target exists in csproj)
+RUN --mount=type=cache,target=/root/.nuget/packages \
+    if grep -q "PackageNT8" "$(find src -maxdepth 1 -name '*.csproj' | head -n1)" 2>/dev/null; then \
+        echo "Running custom PackageNT8 target"; \
+        dotnet build "$(find src -maxdepth 1 -name '*.csproj' | head -n1)" -c ${CONFIGURATION} -t:PackageNT8 --no-restore || echo "PackageNT8 target failed (continuing)"; \
+    else \
+        echo "PackageNT8 target not detected; skipping"; \
+    fi
 
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
@@ -94,11 +121,14 @@ RUN groupadd --gid ${USER_ID} appuser && \
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:${SERVICE_PORT}${FKS_HEALTH_CHECK_PATH} || exit 1
 
-# Switch to non-root user
-USER appuser
-
 # Expose service port
 EXPOSE ${SERVICE_PORT}
 
-# Default entrypoint - will be overridden by specific service
-ENTRYPOINT ["dotnet", "FKSService.dll"]
+# Copy entrypoint script while still root so we can adjust perms reliably
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod 755 /app/entrypoint.sh && chown appuser:appuser /app/entrypoint.sh
+
+# Switch to non-root user
+USER appuser
+
+ENTRYPOINT ["/bin/bash","/app/entrypoint.sh"]
