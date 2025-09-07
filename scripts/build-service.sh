@@ -23,21 +23,30 @@ if [[ ${1:-} == "-h" || ${1:-} == "--help" || $# -lt 1 ]]; then
 fi
 
 WORKSPACE_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-SHARED_DOCKERFILE="$WORKSPACE_ROOT/shared/docker/Dockerfile"
-if [[ ! -f "$SHARED_DOCKERFILE" ]]; then
-  # If we are inside the shared/docker repo itself, workspace root is its parent directory
-  if [[ -f "$WORKSPACE_ROOT/Dockerfile" && $(basename "$WORKSPACE_ROOT") == "shared_docker" ]]; then
-    WORKSPACE_ROOT=$(dirname "$WORKSPACE_ROOT")
-  fi
-  echo "[error] shared Dockerfile not found at $SHARED_DOCKERFILE" >&2
-  exit 1
-fi
+
+# Resolve template Dockerfile based on runtime (defaults to base if unknown)
+resolve_dockerfile() {
+  local runtime="$1"; local tdir="$WORKSPACE_ROOT/shared/docker/templates"
+  case "$runtime" in
+    python) echo "$tdir/Dockerfile.python";;
+    node|js|javascript) echo "$tdir/Dockerfile.node";;
+    rust) echo "$tdir/Dockerfile.rust";;
+    nginx) echo "$tdir/Dockerfile.nginx";;
+    dotnet|csharp|cs) echo "$tdir/Dockerfile.dotnet";;
+    react) echo "$tdir/Dockerfile.react";;
+    *) echo "$tdir/Dockerfile.base";;
+  esac
+}
 
 SERVICE_PATH=$1; shift || true
 if [[ ! -d "$SERVICE_PATH" ]]; then
   echo "[error] service path $SERVICE_PATH does not exist" >&2; exit 1;
 fi
-SHARED_DOCKERFILE="$WORKSPACE_ROOT/shared/docker/Dockerfile"
+TEMPLATE_DOCKERFILE="$(resolve_dockerfile "$RUNTIME")"
+if [[ ! -f "$TEMPLATE_DOCKERFILE" ]]; then
+  echo "[error] Template Dockerfile not found for runtime '$RUNTIME' at $TEMPLATE_DOCKERFILE" >&2
+  exit 1
+fi
 
 RUNTIME="python"
 TYPE="app"
@@ -70,7 +79,7 @@ echo "[info] Building service: $SERVICE_PATH"
 echo "       Runtime: $RUNTIME  Type: $TYPE  GPU: $GPU  Tag: $TAG"
 
 BUILD_CMD=(docker build "$SERVICE_PATH" \
-  -f "$SHARED_DOCKERFILE" \
+  -f "$TEMPLATE_DOCKERFILE" \
   --build-arg SERVICE_RUNTIME="$RUNTIME" \
   --build-arg SERVICE_TYPE="$TYPE" \
   --build-arg BUILD_TYPE="$BUILD_TYPE" \
