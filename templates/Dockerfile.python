@@ -36,16 +36,19 @@ ENV PATH="/venv/bin:$PATH"
 # Copy dependency files for layer caching
 COPY requirements*.txt pyproject.toml* ./
 
-# Install Python dependencies
+# Install base Python dependencies (delay editable install until after sources & README are present)
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --upgrade pip wheel setuptools && \
     if [ -f "requirements.txt" ]; then pip install -r requirements.txt; fi && \
-    if [ -f "requirements.dev.txt" ]; then pip install -r requirements.dev.txt; fi && \
-    if [ -f "pyproject.toml" ]; then pip install -e .; fi
+    if [ -f "requirements.dev.txt" ]; then pip install -r requirements.dev.txt; fi
 
-# Copy source code
+# Copy source code then perform editable install (README needed for metadata)
 COPY src/ ./src/
 COPY shared/ ./shared/
+COPY README* LICENSE* ./
+
+# Now run editable install
+RUN if [ -f "pyproject.toml" ]; then pip install -e .; fi
 
 # Runtime stage
 FROM python:3.13-slim AS runtime
